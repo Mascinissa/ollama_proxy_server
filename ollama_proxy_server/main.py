@@ -85,6 +85,7 @@ def main():
             except BrokenPipeError:
                 pass
 
+
         def do_HEAD(self):
             self.log_request()
             self.proxy()
@@ -151,10 +152,15 @@ def main():
                 if cs['queue'].qsize() < min_queued_server[1]['queue'].qsize():
                     min_queued_server = server
 
+            target_server = min_queued_server[1]['url']
+            client_ip, client_port = self.client_address
+
+            # **Log the dispatched server**
+            print(f"{client_ip} -> {min_queued_server[0]}={target_server}{path} (Method: {self.command})")
+
             # Apply the queuing mechanism only for a specific endpoint.
             if path == '/api/generate' or path == '/api/chat' or path == '/v1/chat/completions':
                 que = min_queued_server[1]['queue']
-                client_ip, client_port = self.client_address
                 self.add_access_log_entry(event="gen_request", user=self.user, ip_address=client_ip, access="Authorized", server=min_queued_server[0], nb_queued_requests_on_server=que.qsize())
                 que.put_nowait(1)
                 try:
@@ -164,16 +170,16 @@ def main():
                         post_data_str = post_data.decode('utf-8')
                         post_data_dict = json.loads(post_data_str)
 
-                    response = requests.request(self.command, min_queued_server[1]['url'] + path, params=get_params, data=post_params, stream=post_data_dict.get("stream", False))
+                    response = requests.request(self.command, target_server + path, params=get_params, data=post_params, stream=post_data_dict.get("stream", False))
                     self._send_response(response)
                 except Exception as ex:
-                    self.add_access_log_entry(event="gen_error",user=self.user, ip_address=client_ip, access="Authorized", server=min_queued_server[0], nb_queued_requests_on_server=que.qsize(),error=ex)                    
+                    self.add_access_log_entry(event="gen_error", user=self.user, ip_address=client_ip, access="Authorized", server=min_queued_server[0], nb_queued_requests_on_server=que.qsize(), error=ex)                    
                 finally:
                     que.get_nowait()
-                    self.add_access_log_entry(event="gen_done",user=self.user, ip_address=client_ip, access="Authorized", server=min_queued_server[0], nb_queued_requests_on_server=que.qsize())                    
+                    self.add_access_log_entry(event="gen_done", user=self.user, ip_address=client_ip, access="Authorized", server=min_queued_server[0], nb_queued_requests_on_server=que.qsize())                    
             else:
                 # For other endpoints, just mirror the request.
-                response = requests.request(self.command, min_queued_server[1]['url'] + path, params=get_params, data=post_params)
+                response = requests.request(self.command, target_server + path, params=get_params, data=post_params)
                 self._send_response(response)
 
     class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
